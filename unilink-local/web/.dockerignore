@@ -1,0 +1,8 @@
+node_modules
+scripts
+package.json
+package-lock.json
+tailwind.config.cjs
+tailwind.input.css
+js/telas/TelaAdmin.js
+js/telas/TelaUsuarioDetalhe.js

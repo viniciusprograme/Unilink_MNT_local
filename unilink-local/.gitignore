@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+*.env
+node_modules/
+dump/*
+!dump/.gitkeep
+backups/*
+!backups/.gitkeep
+*.log
+*.dump
+*.csv
+*.bak

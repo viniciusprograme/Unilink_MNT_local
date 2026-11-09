@@ -1,0 +1,411 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>UNILINK - Manutenção</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230E3263'/%3E%3Ctext x='32' y='46' font-family='Arial,sans-serif' font-size='38' font-weight='bold' font-style='italic' fill='white' text-anchor='middle'%3EU%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="css/tailwind.css">
+    <script src="vendor/react.production.min.js"></script>
+    <script src="vendor/react-dom.production.min.js"></script>
+    <script src="vendor/babel.min.js"></script>
+    <script src="vendor/xlsx.full.min.js"></script>
+
+    <style>
+        /* ===== UNILINK · linguagem visual (SaaS operacional) ===== */
+        * {
+            box-sizing: border-box;
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        @font-face {
+            font-family: Inter;
+            font-style: normal;
+            font-weight: 400 800;
+            font-display: swap;
+            src: url("vendor/inter-latin-variable.woff2") format("woff2");
+        }
+        @font-face {
+            font-family: 'JetBrains Mono';
+            font-style: normal;
+            font-weight: 500 600;
+            font-display: swap;
+            src: url("vendor/jetbrains-mono-latin-variable.woff2") format("woff2");
+        }
+
+        html, body {
+            background-color: #F4F6F8;
+            color: #1B2430;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            width: 100%;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+        html.dark, html.dark body { background-color: #0B1220; }
+        /* Logo: azul no modo claro, branca no modo escuro */
+        .logo-img { display: block; user-select: none; }
+        .logo-img-escuro { display: none; }
+        html.dark .logo-img-claro { display: none; }
+        html.dark .logo-img-escuro { display: block; }
+
+        /* Altura do app = viewport visível (100vh puro cria rolagem fantasma no mobile) */
+        #root > div.min-h-screen { min-height: 100vh; min-height: 100dvh; }
+
+        svg {
+            shape-rendering: geometricPrecision;
+            text-rendering: optimizeLegibility;
+        }
+
+        /* Entrada: fade curto, só em resposta a ação (modal, dropdown, toast) */
+        .fade-in { animation: fadeIn 0.15s ease-out both; }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        }
+
+        /* Entrada escalonada (splash) */
+        .anim-rise { animation: rise 0.32s ease-out both; }
+        .d1 { animation-delay: 0.05s; }
+        .d2 { animation-delay: 0.13s; }
+        .d3 { animation-delay: 0.21s; }
+        .d4 { animation-delay: 0.29s; }
+        @keyframes rise {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: none; }
+        }
+        /* Abertura de modal/detalhes */
+        .backdrop-in { animation: fadeIn 0.3s ease-out both; }
+        .modal-pop { animation: pop 0.35s ease-out backwards; }
+        @keyframes pop {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: none; }
+        }
+        @media (max-width: 640px) {
+            @keyframes pop {
+                from { opacity: 0; transform: translateY(20px) scale(0.98); }
+                to { opacity: 1; transform: none; }
+            }
+        }
+        /* Painel de modal: nunca passa da altura visível.
+           O overlay tem p-3 (1.5rem no total) e sm:p-6 (3rem no total); o painel desconta isso. */
+        .modal-panel { max-height: calc(100vh - 1.5rem); max-height: calc(100dvh - 1.5rem); overscroll-behavior: contain; }
+        @media (min-width: 640px) {
+            .modal-panel { max-height: calc(100vh - 3rem); max-height: calc(100dvh - 3rem); }
+        }
+        /* Trava a rolagem da página enquanto há modal aberto (classe aplicada pelo ModalPortal) */
+        html.modal-open, html.modal-open body { overflow: hidden; }
+        /* Respiro superior da tela: menor em janelas baixas (notebook com barra do navegador) */
+        .app-main { padding-top: 1rem; }
+        @media (min-height: 760px) and (min-width: 640px) { .app-main { padding-top: 3rem; } }
+        /* Transição entre telas (navegação).
+           IMPORTANTE: fill-mode "backwards" (não "both"). Com "both" o transform da animação continua
+           aplicado no <main> depois de terminar, e todo position:fixed dentro dele (modais, toast,
+           câmera) passa a ser posicionado em relação ao <main> e não à janela. */
+        .screen-enter { animation: screenIn 0.35s ease-out backwards; }
+        @keyframes screenIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: none; }
+        }
+        /* Entrada das linhas nas listas */
+        .row-enter { animation: rowIn 0.35s ease-out both; }
+        @keyframes rowIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: none; }
+        }
+        /* Pulso do indicador online */
+        .pulse-ring { animation: pulseRing 2.4s ease-out infinite; }
+        @keyframes pulseRing {
+            0% { transform: scale(1); opacity: 0.6; }
+            70% { transform: scale(2.8); opacity: 0; }
+            100% { transform: scale(2.8); opacity: 0; }
+        }
+        /* Parede de marca UNILINK — inscricao em deriva */
+        .page-art, .splash-art { position: relative; isolation: isolate; }
+        .page-art::before, .splash-art::before {
+            content: ""; position: fixed; inset: -15vmin; z-index: -1; pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='260'%3E%3Ctext x='16' y='118' font-family='Arial, sans-serif' font-size='84' font-weight='900' font-style='italic' fill='none' stroke='%230E3263' stroke-opacity='0.1'%3EUNILINK%3C/text%3E%3Ctext x='330' y='208' font-family='Arial, sans-serif' font-size='38' font-weight='900' font-style='italic' fill='%230E3263' fill-opacity='0.06'%3EUNILINK%3C/text%3E%3Ctext x='36' y='196' font-family='Arial, sans-serif' font-size='19' font-weight='700' letter-spacing='6' fill='%230E3263' fill-opacity='0.09'%3EMTN%3C/text%3E%3C/svg%3E");
+            background-size: 88vmin 41vmin;
+            mask-image: radial-gradient(120% 90% at 30% 20%, black 30%, transparent 75%);
+            -webkit-mask-image: radial-gradient(120% 90% at 30% 20%, black 30%, transparent 75%);
+            animation: wordDrift 36s ease-in-out infinite alternate;
+        }
+        .page-art::after, .splash-art::after {
+            content: ""; position: fixed; inset: -8vmin; z-index: -1; pointer-events: none;
+            background:
+                radial-gradient(58vmin 40vmin at 10% 4%, rgba(14, 50, 99, 0.10), transparent 70%),
+                radial-gradient(50vmin 36vmin at 90% 16%, rgba(45, 212, 191, 0.08), transparent 70%),
+                radial-gradient(68vmin 44vmin at 72% 88%, rgba(99, 102, 241, 0.06), transparent 70%);
+            animation: aurora 30s ease-in-out infinite alternate;
+        }
+        @keyframes aurora {
+            from { transform: translate3d(-2vmin, -1vmin, 0) scale(1); }
+            to { transform: translate3d(2vmin, 1.5vmin, 0) scale(1.05); }
+        }
+        @keyframes wordDrift {
+            from { transform: translate3d(-5vmin, -2.5vmin, 0); }
+            to { transform: translate3d(5vmin, 3vmin, 0); }
+        }
+        html.dark .page-art::before, html.dark .splash-art::before {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='260'%3E%3Ctext x='16' y='118' font-family='Arial, sans-serif' font-size='84' font-weight='900' font-style='italic' fill='none' stroke='%2338BDF8' stroke-opacity='0.13'%3EUNILINK%3C/text%3E%3Ctext x='330' y='208' font-family='Arial, sans-serif' font-size='38' font-weight='900' font-style='italic' fill='%2338BDF8' fill-opacity='0.08'%3EUNILINK%3C/text%3E%3Ctext x='36' y='196' font-family='Arial, sans-serif' font-size='19' font-weight='700' letter-spacing='6' fill='%2338BDF8' fill-opacity='0.1'%3EMTN%3C/text%3E%3C/svg%3E");
+        }
+        html.dark .page-art::after, html.dark .splash-art::after {
+            background:
+                radial-gradient(58vmin 40vmin at 10% 4%, rgba(56, 189, 248, 0.10), transparent 70%),
+                radial-gradient(50vmin 36vmin at 90% 16%, rgba(45, 212, 191, 0.08), transparent 70%),
+                radial-gradient(68vmin 44vmin at 72% 88%, rgba(129, 140, 248, 0.08), transparent 70%);
+        }
+        .env-card { transition: transform 0.18s ease-out, border-color 0.15s, box-shadow 0.18s ease-out; }
+        .env-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(14, 50, 99, 0.10); }
+        html.dark .env-card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+        .env-card .env-ic { transition: transform 0.18s ease-out; }
+        .env-card:hover .env-ic { transform: scale(1.08); }
+        /* Toast compacto */
+        .toast-in { animation: toastIn 0.15s ease-out both; }
+        @keyframes toastIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        /* Skeleton */
+        .u-skeleton {
+            background: linear-gradient(90deg, rgba(148,163,184,.16) 25%, rgba(148,163,184,.30) 50%, rgba(148,163,184,.16) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s infinite linear;
+        }
+        @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+        button, input, select, textarea {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        @media (max-width: 640px) {
+            /* 44px só em ações principais — botões inline/compactos ficam de fora */
+            button:not(.btn-page):not(.icon-btn) { min-height: 44px; }
+            input, select, textarea { font-size: 16px !important; }
+            .btn-page { min-height: 32px; }
+        }
+        img, video { max-width: 100%; height: auto; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 999px; }
+        html.dark ::-webkit-scrollbar-thumb { background: #334155; }
+        ::-webkit-scrollbar-track { background: transparent; }
+
+        :focus-visible { outline: 2px solid #0E3263; outline-offset: 2px; border-radius: 6px; }
+        html.dark :focus-visible { outline-color: #93c5fd; }
+
+        /* ----- Primitivos ----- */
+        .u-surface {
+            background: #fff;
+            border: 1px solid #D9DEE5;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, .06);
+        }
+        html.dark .u-surface { background: #111827; border-color: #1F2937; box-shadow: none; }
+
+        .u-divider { border-color: #F1F5F9; }
+        html.dark .u-divider { border-color: #1F2937; }
+
+        .u-label {
+            display: block; font-size: 13px; font-weight: 500;
+            color: #5B6472; margin-bottom: 6px;
+        }
+        html.dark .u-label { color: #CBD5E1; }
+
+        .u-input {
+            width: 100%; border-radius: 6px; padding: 8px 12px;
+            background: #fff; border: 1px solid #D9DEE5;
+            color: #17202A; font-size: 14px; transition: border-color .15s, box-shadow .15s;
+            height: 36px;
+        }
+        textarea.u-input { height: auto; }
+        .u-input::placeholder { color: #667085; text-transform: none; }
+        .u-input:focus { outline: none; border-color: #0E3263; box-shadow: 0 0 0 3px rgba(14,50,99,.10); }
+        html.dark .u-input { background: #172033; border-color: #1F2937; color: #F1F5F9; }
+        html.dark .u-input:focus { border-color: #38BDF8; box-shadow: 0 0 0 3px rgba(56,189,248,.12); }
+
+        select.u-input { appearance: auto; }
+
+        /* Botões: hierarquia única, 36px */
+        .btn-primary {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: #0E3263; color: #fff; font-weight: 600; font-size: 13px;
+            padding: 8px 16px; border-radius: 6px; transition: background .15s, transform .1s;
+            min-height: 36px; white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(14, 50, 99, .28);
+        }
+        .btn-primary:hover { background: #0A2447; }
+        .btn-primary:active { transform: scale(.97); }
+        .btn-primary:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
+
+        .btn-primary-outline {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: #fff; color: #0E3263; font-weight: 500; font-size: 13px;
+            padding: 8px 14px; border-radius: 6px; border: 1px solid #0E3263;
+            min-height: 36px; white-space: nowrap; transition: background .15s, transform .1s;
+        }
+        .btn-primary-outline:hover { background: rgba(14,50,99,.06); }
+        .btn-primary-outline:active { transform: scale(.97); }
+        .btn-primary-outline:disabled { opacity: .55; cursor: not-allowed; }
+        html.dark .btn-primary-outline { background: transparent; color: #7DD3FC; border-color: #0369A1; }
+        html.dark .btn-primary-outline:hover { background: rgba(56,189,248,.08); }
+
+        .btn-ghost {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 13px; font-weight: 500; color: #475569;
+            padding: 8px 14px; border-radius: 6px;
+            background: #fff; border: 1px solid #D9DEE5; transition: background .15s, transform .1s;
+            min-height: 36px; white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+        }
+        .btn-ghost:active { transform: scale(.97); }
+        .btn-ghost:hover { background: #F8FAFC; color: #0F172A; }
+        html.dark .btn-ghost { background: transparent; border-color: #1F2937; color: #CBD5E1; }
+        html.dark .btn-ghost:hover { background: #172033; color: #fff; }
+
+        .btn-danger {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: #B3261E; color: #fff; font-weight: 500; font-size: 13px;
+            padding: 8px 14px; border-radius: 6px; min-height: 36px;
+        }
+        .btn-danger:hover { background: #8F1D17; }
+
+        .btn-success {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: #1B7A4D; color: #fff; font-weight: 600; font-size: 13px;
+            padding: 8px 16px; border-radius: 6px; transition: background .15s;
+            min-height: 36px; white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(27, 122, 77, .28);
+        }
+        .btn-success:hover { background: #14532C; }
+        .btn-success:active { transform: scale(.97); }
+        .btn-success:disabled, .btn-danger:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+
+        .btn-page {
+            min-width: 32px; height: 32px; padding: 0 8px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 8px; font-size: 13px; font-weight: 600;
+            background: #fff; border: 1px solid #E2E8F0; color: #475569;
+        }
+        .btn-page:disabled { opacity: .4; }
+        .btn-page-ativo { background: #0E3263 !important; border-color: #0E3263 !important; color: #fff !important; }
+        html.dark .btn-page { background: transparent; border-color: #1F2937; color: #CBD5E1; }
+        html.dark .btn-page-ativo { background: #0E3263 !important; border-color: #0E3263 !important; color: #fff !important; }
+
+        /* Dock inferior: pill ativa em degradê com fade suave (opacity interpola; background não) */
+        .dock-btn { position: relative; transition: color .3s ease; }
+        .dock-btn::before {
+            content: ""; position: absolute; inset: 0; border-radius: inherit;
+            background: linear-gradient(135deg, rgba(14,50,99,.16), rgba(14,50,99,.04));
+            opacity: 0; transition: opacity .35s ease;
+        }
+        .dock-btn-ativo { color: #0E3263; }
+        .dock-btn-ativo::before { opacity: 1; }
+        html.dark .dock-btn::before {
+            background: linear-gradient(135deg, rgba(56,189,248,.25), rgba(56,189,248,.06));
+        }
+        html.dark .dock-btn-ativo { color: #7DD3FC; }
+
+        /* Botão de ícone inline (copiar, fechar, remover) — nunca estica */
+        .icon-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 28px; min-height: 28px; padding: 6px; border-radius: 8px;
+            color: #94A3B8; transition: background .15s, color .15s; flex-shrink: 0;
+        }
+        .icon-btn:hover { background: rgba(148,163,184,.18); color: #475569; }
+        html.dark .icon-btn:hover { color: #E2E8F0; }
+
+        /* Tabela operacional */
+        .u-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .u-table thead th {
+            text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .05em;
+            text-transform: uppercase; color: #5B6472; padding: 8px 12px;
+            border-bottom: 1px solid #D9DEE5; white-space: nowrap;
+        }
+        html.dark .u-table thead th { color: #94A3B8; border-color: #1F2937; }
+        .u-table tbody td { padding: 10px 12px; border-bottom: 1px solid #F1F5F9; vertical-align: middle; }
+        html.dark .u-table tbody td { border-color: #172033; }
+        .u-table tbody tr:last-child td { border-bottom: none; }
+        .u-table tbody tr { transition: background .12s; }
+        .u-table tbody tr:hover { background: #E8F0F8; }
+        html.dark .u-table tbody tr:hover { background: #172033; }
+
+        /* Coluna de ações fixa à direita (tabelas com rolagem horizontal) */
+        .u-table-pin th:last-child, .u-table-pin td:last-child {
+            position: sticky; right: 0; z-index: 1;
+            background: #fff;
+            box-shadow: -1px 0 0 #D9DEE5;
+        }
+        html.dark .u-table-pin th:last-child, html.dark .u-table-pin td:last-child {
+            background: #111827;
+            box-shadow: -1px 0 0 #1F2937;
+        }
+
+        /* Modal: bottom-sheet no mobile */
+        @media (max-width: 640px) {
+            .sheet-mobile {
+                align-items: flex-end !important;
+                padding: 0 !important;
+            }
+            .sheet-mobile > div.sheet-panel {
+                border-radius: 12px 12px 0 0 !important;
+                max-height: 92dvh !important;
+            }
+        }
+
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!--
+        Ordem de carregamento importa:
+        1) (sem libs externas de backend — o front fala só com a API em /api)
+        2) Config/serviços (apiConfig = cliente de auth da API + camada de dados)
+        3) Funções utilitárias
+        4) Componentes reutilizáveis (badges, logo, modal)
+        5) Telas (usam os componentes acima)
+        6) App.js (usa todas as telas e monta a raiz React)
+    -->
+    <!-- Logger frontend (precisa vir ANTES do App para capturar tudo) -->
+    <script src="js/logger.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/apiConfig.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/services/chamadosService.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/utils.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/theme.js"></script>
+
+    <script type="text/babel" charset="utf-8" src="js/components/Logo.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/CampoSenha.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/DateBadge.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/ServiceBadge.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/PriorityBadge.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/ModalLogin.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/CameraCapture.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/ModalConcluir.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/Toast.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/ModalDetalhes.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/PieChart.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/components/DownloadPopover.js"></script>
+
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaLogin.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaSucesso.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaCorretiva.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaPendencia.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaHistorico.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaDashboard.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaAcompanhamento.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaRedefinirSenha.js"></script>
+    <script type="text/babel" charset="utf-8" src="js/telas/TelaGerenciarUsuarios.js"></script>
+
+    <script type="text/babel" charset="utf-8" src="js/App.js"></script>
+</body>
+</html>

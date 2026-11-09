@@ -1,0 +1,5 @@
+unilink.lan {
+    tls internal
+    encode gzip
+    reverse_proxy web:80
+}
